@@ -4,9 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 interface FilterSidebarProps {
-  sources: Array<{ slug: string; name: string }>;
   categories: string[];
-  currentSource: string | null;
   currentCategory: string | null;
   currentSearch: string | null;
   currentSort: string | null;
@@ -14,9 +12,7 @@ interface FilterSidebarProps {
 }
 
 export function FilterSidebar({
-  sources,
   categories,
-  currentSource,
   currentCategory,
   currentSearch,
   currentSort,
@@ -115,8 +111,6 @@ export function FilterSidebar({
             ))}
           </select>
         </div>
-
-
 
         {/* Category Filter */}
         {categories.length > 0 && (

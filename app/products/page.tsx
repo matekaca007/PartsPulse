@@ -34,12 +34,7 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
   const currentSort = params.sort || null;
   const currentPage = parseInt(params.page || "1", 10);
 
-  // ─── Fetch source sites for filter ────────────────────────
-  const { data: sources } = await supabase
-    .from("source_sites")
-    .select("slug, name")
-    .eq("is_active", true)
-    .order("name");
+  // (source filter removed — no per-source UI)
 
   // ─── Fetch distinct categories ────────────────────────────
   const { data: categoryRows } = await supabase
@@ -122,9 +117,7 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Sidebar */}
       <FilterSidebar
-        sources={sources || []}
         categories={categories}
-        currentSource={currentSource}
         currentCategory={currentCategory}
         currentSearch={currentSearch}
         currentSort={currentSort}
@@ -139,9 +132,6 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
               {products.map((product: any, index: number) => {
                 const firstImage = product.product_images
                   ?.sort((a: any, b: any) => a.position - b.position)?.[0];
-                const sourceSite = Array.isArray(product.source_sites)
-                  ? product.source_sites[0]
-                  : product.source_sites;
 
                 return (
                   <div
@@ -152,7 +142,6 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
                       slug={product.slug}
                       title={product.title}
                       category={product.category}
-                      vendor={product.vendor}
                       priceMin={product.price_min}
                       priceMax={product.price_max}
                       currency={product.currency}

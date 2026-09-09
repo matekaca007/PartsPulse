@@ -12,7 +12,17 @@ interface ImageGalleryProps {
 }
 
 export function ImageGallery({ images, productTitle }: ImageGalleryProps) {
+  // ── All hooks must be declared before any conditional returns ──
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - left) / width) * 100;
+    const y = ((e.clientY - top) / height) * 100;
+    setZoomOrigin(`${x}% ${y}%`);
+  };
 
   if (images.length === 0) {
     return (
@@ -38,15 +48,6 @@ export function ImageGallery({ images, productTitle }: ImageGalleryProps) {
   }
 
   const currentImage = images[selectedIndex];
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - left) / width) * 100;
-    const y = ((e.clientY - top) / height) * 100;
-    setZoomOrigin(`${x}% ${y}%`);
-  };
 
   return (
     <div className="space-y-4">

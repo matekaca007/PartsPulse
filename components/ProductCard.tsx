@@ -5,13 +5,11 @@ interface ProductCardProps {
   slug: string;
   title: string;
   category: string | null;
-  vendor: string | null;
   priceMin: number | null;
   priceMax: number | null;
   currency: string;
   imageSrc: string | null;
   imageAlt: string | null;
-
   isAvailable: boolean;
 }
 
@@ -19,13 +17,11 @@ export function ProductCard({
   slug,
   title,
   category,
-  vendor,
   priceMin,
   priceMax,
   currency,
   imageSrc,
   imageAlt,
-
   isAvailable,
 }: ProductCardProps) {
   const formatPrice = (price: number | null) => {
@@ -80,7 +76,6 @@ export function ProductCard({
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-
           {!isAvailable && (
             <span
               className="badge"
@@ -115,8 +110,6 @@ export function ProductCard({
         >
           {title}
         </h3>
-
-
 
         {/* Price */}
         <div className="flex items-baseline gap-2">
