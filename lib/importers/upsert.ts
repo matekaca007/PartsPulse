@@ -4,6 +4,9 @@
  * Consumes NormalizedProduct objects from any adapter and upserts
  * them into Supabase. Keyed on (source_site_id, source_product_id)
  * so re-running an import updates existing rows instead of duplicating.
+ *
+ * Supports optional taxonomy fields (superCategoryId, subCategoryId,
+ * vehicleSlugs) added in migration 002.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -31,12 +34,33 @@ function getSupabaseAdmin(): SupabaseAdmin {
   });
 }
 
-// ─── Upsert a single product + its images and variants ───────
+// ─── Resolve vehicle slugs → UUIDs (cached per import run) ────
+
+async function resolveVehicleIds(
+  supabase: SupabaseAdmin,
+  slugs: string[],
+  cache: Map<string, string>
+): Promise<string[]> {
+  const missing = slugs.filter((s) => !cache.has(s));
+  if (missing.length > 0) {
+    const { data } = await supabase
+      .from("vehicles")
+      .select("id, slug")
+      .in("slug", missing);
+    for (const row of data ?? []) {
+      cache.set(row.slug, row.id);
+    }
+  }
+  return slugs.map((s) => cache.get(s)).filter(Boolean) as string[];
+}
+
+// ─── Upsert a single product + its images, variants, vehicles ─
 
 async function upsertOneProduct(
   supabase: SupabaseAdmin,
   sourceSiteId: string,
-  product: NormalizedProduct
+  product: NormalizedProduct,
+  vehicleCache: Map<string, string>
 ): Promise<void> {
   const prices = product.variants.map((v) => v.price).filter((p) => p > 0);
   const priceMin = prices.length > 0 ? Math.min(...prices) : null;
@@ -47,25 +71,26 @@ async function upsertOneProduct(
     .from("products")
     .upsert(
       {
-        source_site_id: sourceSiteId,
-        source_product_id: product.sourceProductId,
-        source_url: product.sourceUrl,
-        title: product.title,
-        slug: product.slug,
-        description_html: product.descriptionHtml,
-        vendor: product.vendor,
-        category: product.category,
-        tags: product.tags,
-        price_min: priceMin,
-        price_max: priceMax,
-        currency: product.currency,
-        is_available: product.isAvailable,
-        raw_data: product.rawData,
-        updated_at: new Date().toISOString(),
+        source_site_id:     sourceSiteId,
+        source_product_id:  product.sourceProductId,
+        source_url:         product.sourceUrl,
+        title:              product.title,
+        slug:               product.slug,
+        description_html:   product.descriptionHtml,
+        vendor:             product.vendor,
+        category:           product.category,
+        tags:               product.tags,
+        price_min:          priceMin,
+        price_max:          priceMax,
+        currency:           product.currency,
+        is_available:       product.isAvailable,
+        raw_data:           product.rawData,
+        // Taxonomy FK columns (optional — only set when adapter provides them)
+        super_category_id:  product.superCategoryId ?? null,
+        sub_category_id:    product.subCategoryId   ?? null,
+        updated_at:         new Date().toISOString(),
       },
-      {
-        onConflict: "source_site_id,source_product_id",
-      }
+      { onConflict: "source_site_id,source_product_id" }
     )
     .select("id")
     .single();
@@ -83,13 +108,13 @@ async function upsertOneProduct(
 
   if (product.images.length > 0) {
     const imageRows = product.images.map((img) => ({
-      product_id: productId,
+      product_id:      productId,
       source_image_id: img.sourceImageId,
-      src: img.src,
-      alt_text: img.altText,
-      position: img.position,
-      width: img.width,
-      height: img.height,
+      src:             img.src,
+      alt_text:        img.altText,
+      position:        img.position,
+      width:           img.width,
+      height:          img.height,
     }));
 
     const { error: imgError } = await supabase
@@ -104,30 +129,27 @@ async function upsertOneProduct(
   }
 
   // 3. Replace variants: delete old, insert current
-  await supabase
-    .from("product_variants")
-    .delete()
-    .eq("product_id", productId);
+  await supabase.from("product_variants").delete().eq("product_id", productId);
 
   if (product.variants.length > 0) {
     const variantRows = product.variants.map((v) => ({
-      product_id: productId,
+      product_id:        productId,
       source_variant_id: v.sourceVariantId,
-      title: v.title,
-      sku: v.sku,
-      price: v.price,
-      compare_at_price: v.compareAtPrice,
-      currency: v.currency,
-      option1_name: v.option1Name,
-      option1_value: v.option1Value,
-      option2_name: v.option2Name,
-      option2_value: v.option2Value,
-      option3_name: v.option3Name,
-      option3_value: v.option3Value,
-      is_available: v.isAvailable,
+      title:             v.title,
+      sku:               v.sku,
+      price:             v.price,
+      compare_at_price:  v.compareAtPrice,
+      currency:          v.currency,
+      option1_name:      v.option1Name,
+      option1_value:     v.option1Value,
+      option2_name:      v.option2Name,
+      option2_value:     v.option2Value,
+      option3_name:      v.option3Name,
+      option3_value:     v.option3Value,
+      is_available:      v.isAvailable,
       inventory_quantity: v.inventoryQuantity,
-      position: v.position,
-      image_src: v.imageSrc,
+      position:          v.position,
+      image_src:         v.imageSrc,
     }));
 
     const { error: varError } = await supabase
@@ -138,6 +160,38 @@ async function upsertOneProduct(
       console.warn(
         `[upsert] Warning: failed to insert variants for "${product.title}": ${varError.message}`
       );
+    }
+  }
+
+  // 4. Sync vehicle fitment (many-to-many)
+  if (product.vehicleSlugs && product.vehicleSlugs.length > 0) {
+    const vehicleIds = await resolveVehicleIds(
+      supabase,
+      product.vehicleSlugs,
+      vehicleCache
+    );
+
+    // Delete existing fitments for this product then re-insert
+    await supabase
+      .from("product_vehicles")
+      .delete()
+      .eq("product_id", productId);
+
+    if (vehicleIds.length > 0) {
+      const fitmentRows = vehicleIds.map((vehicleId) => ({
+        product_id: productId,
+        vehicle_id: vehicleId,
+      }));
+
+      const { error: fitError } = await supabase
+        .from("product_vehicles")
+        .insert(fitmentRows);
+
+      if (fitError) {
+        console.warn(
+          `[upsert] Warning: failed to insert vehicle fitments for "${product.title}": ${fitError.message}`
+        );
+      }
     }
   }
 }
@@ -172,11 +226,14 @@ export async function upsertProducts(
   let upsertedProducts = 0;
   const errors: ImportResult["errors"] = [];
 
+  // Shared vehicle slug→id cache across all products in this run
+  const vehicleCache = new Map<string, string>();
+
   for await (const product of products) {
     totalProducts++;
 
     try {
-      await upsertOneProduct(supabase, sourceSiteId, product);
+      await upsertOneProduct(supabase, sourceSiteId, product, vehicleCache);
       upsertedProducts++;
 
       if (upsertedProducts % BATCH_LOG_INTERVAL === 0) {

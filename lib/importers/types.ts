@@ -7,6 +7,34 @@
  * of which adapter produced them.
  */
 
+// ─── Taxonomy Types ──────────────────────────────────────────
+
+/**
+ * A category row from the `categories` table.
+ * parent_id = null → super-category; parent_id = UUID → sub-category.
+ */
+export interface Category {
+  id: string;
+  slug: string;
+  nameEn: string;
+  nameKa: string;
+  parentId: string | null;
+  sortOrder: number;
+}
+
+/**
+ * A vehicle row from the `vehicles` table.
+ * isUniversal = true only for the "Universal Fit" pseudo-vehicle.
+ */
+export interface Vehicle {
+  id: string;
+  slug: string;
+  nameEn: string;
+  nameKa: string;
+  isUniversal: boolean;
+  sortOrder: number;
+}
+
 // ─── Normalized Data Shapes ──────────────────────────────────
 
 export interface NormalizedImage {
@@ -44,6 +72,11 @@ export interface NormalizedProduct {
   slug: string;
   descriptionHtml: string | null;
   vendor: string | null;
+  /**
+   * Raw category string from the source site (e.g. Shopify product_type).
+   * Stored in products.category for legacy/search purposes.
+   * Use superCategoryId / subCategoryId for structured taxonomy.
+   */
   category: string | null;
   tags: string[];
   currency: string;
@@ -51,6 +84,19 @@ export interface NormalizedProduct {
   rawData: Record<string, unknown>;
   images: NormalizedImage[];
   variants: NormalizedVariant[];
+  /**
+   * Optional: structured category FKs.
+   * Adapters may populate these if they can map to the taxonomy.
+   * If null, a human can assign them later via the admin UI.
+   */
+  superCategoryId?: string | null;
+  subCategoryId?: string | null;
+  /**
+   * Optional: vehicle slugs this product fits.
+   * e.g. ["jeep-wrangler", "universal-fit"]
+   * The upsert function resolves slugs → UUIDs automatically.
+   */
+  vehicleSlugs?: string[];
 }
 
 // ─── Adapter Contract ────────────────────────────────────────

@@ -9,12 +9,11 @@ export const metadata: Metadata = {
   description: "Browse our full catalog of UTV, ATV, and powersports parts.",
 };
 
-// Force dynamic rendering since we use searchParams
 export const dynamic = "force-dynamic";
 
 interface ProductsPageProps {
   searchParams: Promise<{
-    source?: string;
+    vehicle?: string;
     category?: string;
     search?: string;
     sort?: string;
@@ -28,13 +27,17 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
   const params = await searchParams;
   const supabase = createAnonSupabaseClient();
 
-  const currentSource = params.source || null;
+  const currentVehicle  = params.vehicle  || null;
   const currentCategory = params.category || null;
-  const currentSearch = params.search || null;
-  const currentSort = params.sort || null;
-  const currentPage = parseInt(params.page || "1", 10);
+  const currentSearch   = params.search   || null;
+  const currentSort     = params.sort     || null;
+  const currentPage     = parseInt(params.page || "1", 10);
 
-  // (source filter removed — no per-source UI)
+  // ─── Fetch vehicles for sidebar ───────────────────────────
+  const { data: vehicles } = await supabase
+    .from("vehicles")
+    .select("slug, name_en, is_universal")
+    .order("sort_order");
 
   // ─── Fetch distinct categories ────────────────────────────
   const { data: categoryRows } = await supabase
@@ -51,6 +54,30 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
     ),
   ].sort();
 
+  // ─── Resolve vehicle slug → product IDs (if filtering) ───
+  let vehicleProductIds: string[] | null = null;
+  if (currentVehicle) {
+    const { data: vehicleRow } = await supabase
+      .from("vehicles")
+      .select("id")
+      .eq("slug", currentVehicle)
+      .single();
+
+    if (vehicleRow) {
+      const { data: fitmentRows } = await supabase
+        .from("product_vehicles")
+        .select("product_id")
+        .eq("vehicle_id", vehicleRow.id);
+
+      vehicleProductIds = (fitmentRows ?? []).map(
+        (r: { product_id: string }) => r.product_id
+      );
+    } else {
+      // Unknown vehicle slug — return nothing
+      vehicleProductIds = [];
+    }
+  }
+
   // ─── Build product query ──────────────────────────────────
   let query = supabase
     .from("products")
@@ -60,25 +87,31 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
       slug,
       title,
       category,
-      vendor,
       price_min,
       price_max,
       currency,
       is_available,
-      source_site_id,
-      source_sites!inner ( slug, name ),
       product_images ( src, alt_text, position )
     `,
       { count: "exact" }
     );
 
-  // Filters
-  if (currentSource) {
-    query = query.eq("source_sites.slug", currentSource);
+  // Vehicle filter (via pre-resolved IDs)
+  if (vehicleProductIds !== null) {
+    if (vehicleProductIds.length === 0) {
+      // No matching products — force empty result
+      query = query.in("id", ["00000000-0000-0000-0000-000000000000"]);
+    } else {
+      query = query.in("id", vehicleProductIds);
+    }
   }
+
+  // Category filter
   if (currentCategory) {
     query = query.eq("category", currentCategory);
   }
+
+  // Search filter
   if (currentSearch) {
     query = query.ilike("title", `%${currentSearch}%`);
   }
@@ -106,18 +139,25 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
 
   // Pagination
   const from = (currentPage - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
+  const to   = from + PAGE_SIZE - 1;
   query = query.range(from, to);
 
   const { data: products, count } = await query;
   const totalCount = count || 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
+  // Selected vehicle label for heading
+  const activeVehicleLabel = currentVehicle
+    ? (vehicles ?? []).find((v) => v.slug === currentVehicle)?.name_en ?? null
+    : null;
+
   return (
     <div className="flex flex-col lg:flex-row gap-8">
       {/* Sidebar */}
       <FilterSidebar
+        vehicles={vehicles || []}
         categories={categories}
+        currentVehicle={currentVehicle}
         currentCategory={currentCategory}
         currentSearch={currentSearch}
         currentSort={currentSort}
@@ -126,6 +166,25 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
 
       {/* Main grid */}
       <div className="flex-1 min-w-0">
+        {/* Active vehicle banner */}
+        {activeVehicleLabel && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 rounded-xl mb-6 text-sm font-medium"
+            style={{
+              background: "var(--accent-glow)",
+              border: "1px solid rgba(99,102,241,0.25)",
+              color: "var(--accent-hover)",
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3" />
+              <rect x="9" y="11" width="14" height="10" rx="2" />
+              <circle cx="12" cy="16" r="1" />
+            </svg>
+            Showing parts for <strong>{activeVehicleLabel}</strong>
+          </div>
+        )}
+
         {products && products.length > 0 ? (
           <>
             <div className="product-grid">
@@ -134,10 +193,7 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
                   ?.sort((a: any, b: any) => a.position - b.position)?.[0];
 
                 return (
-                  <div
-                    key={product.id}
-                    style={{ animationDelay: `${index * 50}ms` }}
-                  >
+                  <div key={product.id} style={{ animationDelay: `${index * 50}ms` }}>
                     <ProductCard
                       slug={product.slug}
                       title={product.title}
@@ -159,17 +215,17 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
               <div className="flex justify-center gap-2 mt-10">
                 {Array.from({ length: Math.min(totalPages, 10) }, (_, i) => {
                   const page = i + 1;
-                  const params = new URLSearchParams();
-                  if (currentSource) params.set("source", currentSource);
-                  if (currentCategory) params.set("category", currentCategory);
-                  if (currentSearch) params.set("search", currentSearch);
-                  if (currentSort) params.set("sort", currentSort);
-                  params.set("page", String(page));
+                  const p = new URLSearchParams();
+                  if (currentVehicle)  p.set("vehicle",  currentVehicle);
+                  if (currentCategory) p.set("category", currentCategory);
+                  if (currentSearch)   p.set("search",   currentSearch);
+                  if (currentSort)     p.set("sort",     currentSort);
+                  p.set("page", String(page));
 
                   return (
                     <a
                       key={page}
-                      href={`/products?${params.toString()}`}
+                      href={`/products?${p.toString()}`}
                       className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-medium transition-all"
                       style={{
                         background: page === currentPage ? "var(--accent-glow)" : "var(--surface)",
@@ -184,7 +240,10 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
                   );
                 })}
                 {totalPages > 10 && (
-                  <span className="w-10 h-10 flex items-center justify-center text-sm" style={{ color: "var(--foreground-subtle)" }}>
+                  <span
+                    className="w-10 h-10 flex items-center justify-center text-sm"
+                    style={{ color: "var(--foreground-subtle)" }}
+                  >
                     …
                   </span>
                 )}
@@ -214,7 +273,9 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
               No products found
             </h2>
             <p className="text-sm mb-6" style={{ color: "var(--foreground-muted)" }}>
-              Try adjusting your filters or search terms.
+              {activeVehicleLabel
+                ? `No parts found for ${activeVehicleLabel} yet.`
+                : "Try adjusting your filters or search terms."}
             </p>
             <a href="/products" className="btn-primary">
               Clear Filters
@@ -241,18 +302,21 @@ export default async function ProductsPage(props: ProductsPageProps) {
 
       <Suspense
         fallback={
-          <div className="product-grid">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="card overflow-hidden">
-                <div className="skeleton aspect-square" />
-                <div className="p-4 space-y-3">
-                  <div className="skeleton h-3 w-1/3" />
-                  <div className="skeleton h-4 w-full" />
-                  <div className="skeleton h-4 w-2/3" />
-                  <div className="skeleton h-6 w-1/4 mt-2" />
+          <div className="flex flex-col lg:flex-row gap-8">
+            <div className="w-full lg:w-64 h-96 rounded-xl skeleton flex-shrink-0" />
+            <div className="flex-1 product-grid">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="card overflow-hidden">
+                  <div className="skeleton aspect-square" />
+                  <div className="p-4 space-y-3">
+                    <div className="skeleton h-3 w-1/3" />
+                    <div className="skeleton h-4 w-full" />
+                    <div className="skeleton h-4 w-2/3" />
+                    <div className="skeleton h-6 w-1/4 mt-2" />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         }
       >
