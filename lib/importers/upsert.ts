@@ -6,12 +6,17 @@
  * so re-running an import updates existing rows instead of duplicating.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { NormalizedProduct, ImportResult } from "./types";
+
+// Use `any` for the database generic since we don't have generated types.
+// Once you run `supabase gen types typescript` you can replace this with
+// the generated Database type for full type safety.
+type SupabaseAdmin = SupabaseClient<any, "public", any>;
 
 // ─── Supabase admin client (service role key for server-side ops) ─
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(): SupabaseAdmin {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -21,7 +26,7 @@ function getSupabaseAdmin() {
     );
   }
 
-  return createClient(url, key, {
+  return createClient<any>(url, key, {
     auth: { persistSession: false },
   });
 }
@@ -29,7 +34,7 @@ function getSupabaseAdmin() {
 // ─── Upsert a single product + its images and variants ───────
 
 async function upsertOneProduct(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseAdmin,
   sourceSiteId: string,
   product: NormalizedProduct
 ): Promise<void> {
