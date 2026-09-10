@@ -4,13 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-export function Navbar() {
+import { logout } from "@/app/auth/actions";
+
+export function Navbar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navLinks = [
     { href: "/", label: "Home" },
     { href: "/products", label: "Catalog" },
+    { href: "/wishlist", label: "Wishlist" },
   ];
 
   return (
@@ -42,7 +45,7 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Nav */}
-          <nav className="hidden sm:flex items-center gap-1">
+          <nav className="hidden sm:flex items-center gap-1 flex-1 justify-center">
             {navLinks.map((link) => {
               const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));
               return (
@@ -60,6 +63,34 @@ export function Navbar() {
               );
             })}
           </nav>
+
+          {/* Desktop Auth */}
+          <div className="hidden sm:flex items-center gap-4">
+            {userEmail ? (
+              <div className="flex items-center gap-4">
+                <span className="text-sm" style={{ color: "var(--foreground-muted)" }}>
+                  {userEmail}
+                </span>
+                <form action={logout}>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
+                    style={{ background: "var(--surface-border)", color: "var(--foreground)" }}
+                  >
+                    გასვლა / Logout
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-opacity hover:opacity-90"
+                style={{ background: "var(--brand)", color: "white" }}
+              >
+                შესვლა / Login
+              </Link>
+            )}
+          </div>
 
           {/* Mobile hamburger */}
           <button
@@ -80,7 +111,7 @@ export function Navbar() {
 
         {/* Mobile Nav */}
         {mobileOpen && (
-          <nav className="sm:hidden pb-4 flex flex-col gap-1">
+          <nav className="sm:hidden pb-4 flex flex-col gap-1 border-t mt-2 pt-2" style={{ borderColor: "var(--surface-border)" }}>
             {navLinks.map((link) => {
               const isActive = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));
               return (
@@ -98,6 +129,35 @@ export function Navbar() {
                 </Link>
               );
             })}
+            
+            <div className="mt-2 pt-2 border-t px-2" style={{ borderColor: "var(--surface-border)" }}>
+              {userEmail ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm px-2" style={{ color: "var(--foreground-muted)" }}>
+                    {userEmail}
+                  </span>
+                  <form action={logout}>
+                    <button
+                      type="submit"
+                      onClick={() => setMobileOpen(false)}
+                      className="w-full text-left px-2 py-2 rounded-lg text-sm font-medium transition-colors"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      გასვლა / Logout
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMobileOpen(false)}
+                  className="block w-full text-center px-4 py-2 rounded-lg text-sm font-medium transition-opacity"
+                  style={{ background: "var(--brand)", color: "white" }}
+                >
+                  შესვლა / Login
+                </Link>
+              )}
+            </div>
           </nav>
         )}
       </div>

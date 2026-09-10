@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { createAnonSupabaseClient } from "@/lib/supabase/server";
+import { createClient } from "@/utils/supabase/server";
 import { ProductCard } from "@/components/ProductCard";
 import { FilterSidebar } from "@/components/FilterSidebar";
 import type { Metadata } from "next";
@@ -25,7 +25,19 @@ const PAGE_SIZE = 24;
 
 async function ProductsContent({ searchParams }: ProductsPageProps) {
   const params = await searchParams;
-  const supabase = createAnonSupabaseClient();
+  const supabase = await createClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
+  let userWishlist = new Set<string>();
+  if (user) {
+    const { data: wishlists } = await supabase
+      .from("wishlists")
+      .select("product_id")
+      .eq("user_id", user.id);
+    if (wishlists) {
+      userWishlist = new Set(wishlists.map((w) => w.product_id));
+    }
+  }
 
   const currentVehicle  = params.vehicle  || null;
   const currentCategory = params.category || null;
@@ -195,6 +207,7 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
                 return (
                   <div key={product.id} style={{ animationDelay: `${index * 50}ms` }}>
                     <ProductCard
+                      id={product.id}
                       slug={product.slug}
                       title={product.title}
                       category={product.category}
@@ -204,6 +217,8 @@ async function ProductsContent({ searchParams }: ProductsPageProps) {
                       imageSrc={firstImage?.src || null}
                       imageAlt={firstImage?.alt_text || null}
                       isAvailable={product.is_available}
+                      isWishlisted={userWishlist.has(product.id)}
+                      isLoggedIn={!!user}
                     />
                   </div>
                 );

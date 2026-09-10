@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createAnonSupabaseClient } from "@/lib/supabase/server";
+import { createClient } from "@/utils/supabase/server";
 import { ImageGallery } from "@/components/ImageGallery";
 import { VariantSelector } from "@/components/VariantSelector";
+import { WishlistButton } from "@/components/WishlistButton";
 import type { Metadata } from "next";
 
 interface ProductDetailPageProps {
@@ -13,7 +14,7 @@ export async function generateMetadata({
   params,
 }: ProductDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = createAnonSupabaseClient();
+  const supabase = await createClient();
   const { data: product } = await supabase
     .from("products")
     .select("title, description_html, category")
@@ -37,7 +38,7 @@ export default async function ProductDetailPage({
   params,
 }: ProductDetailPageProps) {
   const { slug } = await params;
-  const supabase = createAnonSupabaseClient();
+  const supabase = await createClient();
 
   // Fetch product with relations
   const { data: product, error } = await supabase
@@ -56,6 +57,19 @@ export default async function ProductDetailPage({
 
   if (error || !product) {
     notFound();
+  }
+
+  // Fetch user session and wishlist status
+  const { data: { user } } = await supabase.auth.getUser();
+  let isWishlisted = false;
+  if (user) {
+    const { data: wishlist } = await supabase
+      .from("wishlists")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("product_id", product.id)
+      .single();
+    if (wishlist) isWishlisted = true;
   }
 
   const sourceSite = Array.isArray(product.source_sites)
@@ -136,10 +150,19 @@ export default async function ProductDetailPage({
             {product.category && <span className="badge">{product.category}</span>}
           </div>
 
-          {/* Title */}
-          <h1 className="text-2xl lg:text-3xl font-bold leading-tight" style={{ color: "var(--foreground)" }}>
-            {product.title}
-          </h1>
+          {/* Title and Wishlist */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <h1 className="text-2xl lg:text-3xl font-bold leading-tight" style={{ color: "var(--foreground)" }}>
+              {product.title}
+            </h1>
+            <WishlistButton 
+              productId={product.id}
+              initialIsWishlisted={isWishlisted}
+              isLoggedIn={!!user}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80 border"
+              showText={true}
+            />
+          </div>
 
           {/* Details (SKU, Price, Size, Weight) */}
           <div className="flex flex-col gap-1.5 text-sm mt-4 p-4 rounded-lg bg-white/5 border border-white/10">

@@ -14,20 +14,25 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { createClient } from "@/utils/supabase/server";
+
 export const metadata: Metadata = {
   title: "PartsPulse | Powersports Parts",
   description:
     "Browse thousands of UTV, ATV, and powersports parts. find the perfect part.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Navbar />
+        <Navbar userEmail={user?.email} />
         <main className="flex-1">{children}</main>
         <Footer />
       </body>
