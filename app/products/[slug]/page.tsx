@@ -47,7 +47,8 @@ export default async function ProductDetailPage({
       *,
       source_sites ( slug, name, base_url ),
       product_images ( id, src, alt_text, position ),
-      product_variants ( id, source_variant_id, title, sku, price, compare_at_price, currency, option1_name, option1_value, option2_name, option2_value, option3_name, option3_value, is_available, position )
+      product_variants ( id, source_variant_id, title, sku, price, compare_at_price, currency, option1_name, option1_value, option2_name, option2_value, option3_name, option3_value, is_available, position ),
+      product_vehicles ( vehicles ( name_en ) )
     `
     )
     .eq("slug", slug)
@@ -85,6 +86,12 @@ export default async function ProductDetailPage({
       option3Value: v.option3_value,
       isAvailable: v.is_available,
     }));
+
+  const vehicleTags = (product.product_vehicles || [])
+    .map((pv: any) => pv.vehicles?.name_en)
+    .filter(Boolean);
+
+  const displayTags = Array.from(new Set([...vehicleTags, ...(product.tags || [])]));
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
@@ -134,7 +141,27 @@ export default async function ProductDetailPage({
             {product.title}
           </h1>
 
-
+          {/* Details (SKU, Price, Size, Weight) */}
+          <div className="flex flex-col gap-1.5 text-sm mt-4 p-4 rounded-lg bg-white/5 border border-white/10">
+            <p>
+              <span className="font-semibold text-neutral-300 w-16 inline-block">SKU:</span> 
+              <span className="text-neutral-400">{product.source_product_id}</span>
+            </p>
+            <p>
+              <span className="font-semibold text-neutral-300 w-16 inline-block">Price:</span> 
+              <span className="text-neutral-400">
+                {product.price_min ? `${product.currency === 'USD' ? '$' : ''}${product.price_min}` : "not available"}
+              </span>
+            </p>
+            <p>
+              <span className="font-semibold text-neutral-300 w-16 inline-block">Size:</span> 
+              <span className="text-neutral-400">{product.raw_data?.size || "not available"}</span>
+            </p>
+            <p>
+              <span className="font-semibold text-neutral-300 w-16 inline-block">Weight:</span> 
+              <span className="text-neutral-400">{product.raw_data?.weight || "not available"}</span>
+            </p>
+          </div>
 
           {/* Variant selector (includes price) */}
           {variants.length > 0 && (
@@ -145,12 +172,12 @@ export default async function ProductDetailPage({
           )}
 
           {/* Tags */}
-          {product.tags && product.tags.length > 0 && (
+          {displayTags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {product.tags.slice(0, 12).map((tag: string) => (
+              {displayTags.slice(0, 12).map((tag: string) => (
                 <span
                   key={tag}
-                  className="px-2.5 py-1 rounded-md text-xs"
+                  className="px-3 py-1 rounded-full text-sm font-medium"
                   style={{
                     background: "var(--background-secondary)",
                     color: "var(--foreground-subtle)",
